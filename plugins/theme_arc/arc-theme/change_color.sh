@@ -1,27 +1,77 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1090
-#set -x
 set -ueo pipefail
+set -a
 
 SRC_PATH="$(readlink -f "$(dirname "$0")")"
 
+darker_channel() {
+	value="$1"
+	light_delta="$2"
+	value_int="$(bc <<< "ibase=16; $value")"
+	result="$(bc <<< "$value_int - $light_delta")"
+	if [[ "$result" -lt 0 ]]; then
+		result=0
+	fi
+	if [[ "$result" -gt 255 ]]; then
+		result=255
+	fi
+	echo "$result"
+}
+mix_channel() {
+	value1="$(printf '%03d' "0x$1")"
+	value2="$(printf '%03d' "0x$2")"
+	ratio="$3"
+	result="$(bc <<< "scale=0; ($value1 * 100 * $ratio + $value2 * 100 * (1 - $ratio)) / 100")"
+	if [[ "$result" -lt 0 ]]; then
+		result=0
+	elif [[ "$result" -gt 255 ]]; then
+		result=255
+	fi
+	echo "$result"
+}
+
 darker() {
-	"$SRC_PATH/scripts/darker.sh" "$@"
+	hexinput="$(tr '[:lower:]' '[:upper:]' <<< "$1")"
+	light_delta="${2-10}"
+
+	a="$(cut -c-2 <<< "$hexinput")"
+	b="$(cut -c3-4 <<< "$hexinput")"
+	c="$(cut -c5-6 <<< "$hexinput")"
+
+	r="$(darker_channel "$a" "$light_delta")"
+	g="$(darker_channel "$b" "$light_delta")"
+	b="$(darker_channel "$c" "$light_delta")"
+
+	printf '%02x%02x%02x\n' "$r" "$g" "$b"
 }
 mix() {
-	"$SRC_PATH/scripts/mix.sh" "$@"
+	hexinput1="$(tr '[:lower:]' '[:upper:]' <<< "$1")"
+	hexinput2="$(tr '[:lower:]' '[:upper:]' <<< "$2")"
+	ratio="${3-0.5}"
+
+	a="$(cut -c-2 <<< "$hexinput1")"
+	b="$(cut -c3-4 <<< "$hexinput1")"
+	c="$(cut -c5-6 <<< "$hexinput1")"
+	d="$(cut -c-2 <<< "$hexinput2")"
+	e="$(cut -c3-4 <<< "$hexinput2")"
+	f="$(cut -c5-6 <<< "$hexinput2")"
+
+	r="$(mix_channel "$a" "$d" "$ratio")"
+	g="$(mix_channel "$b" "$e" "$ratio")"
+	b="$(mix_channel "$c" "$f" "$ratio")"
+
+	printf '%02x%02x%02x\n' "$r" "$g" "$b"
 }
 is_dark() {
-	hexinput="$(tr '[:lower:]' '[:upper:]' <<< "$1")"
-	half_darker="$(darker "$hexinput" 88)"
-	[[ "$half_darker" == "000000" ]]
+	hexinput="$(tr '[:lower:]' '[:upper:]' <<< "$1")";
+	half_darker="$(darker "$hexinput" 88)";
+	[[ "$half_darker" == "000000" ]];
 }
 
 print_usage() {
 	echo "usage: $0 [-o OUTPUT_THEME_NAME] [-a MESON_OPTS] PATH_TO_PRESET"
 	echo
 	echo "examples:"
-	# shellcheck disable=SC2028 # This is meant to be usage text.
 	echo "	$0 --output my-theme-name <(echo -e \"BG=d8d8d8\\nFG=101010\\nHDR_BG=3c3c3c\\nHDR_FG=e6e6e6\\nSEL_BG=ad7fa8\\nSEL_FG=ffffff\\nTXT_BG=ffffff\\nTXT_FG=1a1a1a\\nBTN_BG=f5f5f5\\nBTN_FG=111111\\n\")"
 	echo "	$0 ../colors/retro/twg"
 	echo "	$0 --meson-opts '--quiet' ../colors/retro/clearlooks"
@@ -79,24 +129,19 @@ fi
 
 HDR_BG=${HDR_BG-$MENU_BG}
 HDR_FG=${HDR_FG-$MENU_FG}
-
 ARC_TRANSPARENCY=$(tr '[:upper:]' '[:lower:]' <<< "${ARC_TRANSPARENCY-True}")
 ARC_WIDGET_BORDER_COLOR=${ARC_WIDGET_BORDER_COLOR-$(mix ${BG} ${FG} 0.75)}
-
 TXT_FG=$FG
 BTN_FG=$FG
 HDR_BTN_FG=$HDR_FG
-
 ACCENT_BG=${ACCENT_BG-$SEL_BG}
 HDR_BTN_BG=${HDR_BTN_BG-$BTN_BG}
-
 HDR_BTN_FG=${HDR_BTN_FG-$BTN_FG}
 WM_BORDER_FOCUS=${WM_BORDER_FOCUS-$SEL_BG}
 WM_BORDER_UNFOCUS=${WM_BORDER_UNFOCUS-$HDR_BG}
 SPACING=${SPACING-3}
 GRADIENT=${GRADIENT-0}
 ROUNDNESS=${ROUNDNESS-2}
-
 TERMINAL_COLOR1=${TERMINAL_COLOR1:-F04A50}
 TERMINAL_COLOR3=${TERMINAL_COLOR3:-F08437}
 TERMINAL_COLOR4=${TERMINAL_COLOR4:-1E88E5}
@@ -105,7 +150,6 @@ TERMINAL_COLOR9=${TERMINAL_COLOR9:-DD2C00}
 TERMINAL_COLOR10=${TERMINAL_COLOR10:-00C853}
 TERMINAL_COLOR11=${TERMINAL_COLOR11:-FF6D00}
 TERMINAL_COLOR12=${TERMINAL_COLOR12:-66BB6A}
-
 INACTIVE_FG=$(mix "$FG" "$BG" 0.75)
 INACTIVE_BG=$(mix "$BG" "$FG" 0.75)
 INACTIVE_HDR_FG=$(mix "$HDR_FG" "$HDR_BG" 0.75)
@@ -113,7 +157,6 @@ INACTIVE_HDR_BG=$(mix "$HDR_BG" "$HDR_FG" 0.75)
 INACTIVE_TXT_MIX=$(mix "$TXT_FG" "$TXT_BG")
 INACTIVE_TXT_FG=$(mix "$TXT_FG" "$TXT_BG" 0.75)
 INACTIVE_TXT_BG=$(mix "$TXT_BG" "$BG" 0.75)
-
 OUTPUT_THEME_NAME=${OUTPUT_THEME_NAME-oomox-arc-$THEME}
 DEST_PATH="$HOME/.themes/${OUTPUT_THEME_NAME/\//-}"
 
@@ -135,7 +178,8 @@ trap post_clean_up EXIT SIGHUP SIGINT SIGTERM
 cp -r "$SRC_PATH/"* "$tempdir/"
 cd "$tempdir"
 LOG_BASENAME="$(dirname "$PWD/." | sed 's/^.*\///')"
-echo "== DETAILED LOGS AT: /tmp/$LOG_BASENAME.*.log "
+touch "/tmp/$LOG_BASENAME.log"
+echo "!== DETAILED LOG AT: "/tmp/$LOG_BASENAME.log" ==!"
 
 echo "== Converting theme into template..."
 
@@ -199,9 +243,8 @@ multiple_cmd_template() {
 	test -n "$(sed -i 's/#d7d8dd/%HDR_BG2%/gI;/%HDR_BG2%/e echo yes >&2' $1 2>&1)" && echo "$1: #d7d8dd replaced by %HDR_BG2%";
 	test -n "$(sed -i 's/#262932/%HDR_BG2%/gI;/%HDR_BG2%/e echo yes >&2' $1 2>&1)" && echo "$1: #262932 replaced by %HDR_BG2%";
 };
-export -f multiple_cmd_template;
 for FILEPATH in "${PATHLIST[@]}"; do
-	find "$FILEPATH" -type f -exec bash -c 'multiple_cmd_template "$0"' {} \; &> "/tmp/$LOG_BASENAME.template.log"
+	find "$FILEPATH" -type f -exec bash -c 'multiple_cmd_template "$0"' {} \; >> "/tmp/$LOG_BASENAME.log"
 done
 
 if [[ "${DEBUG:-}" ]]; then
@@ -226,50 +269,52 @@ ASSETS_FILES=(
 
 echo "== Processing Assets files..."
 for assets_file in "${ASSETS_FILES[@]}"; do
-	test -n "$(sed -i 's/%SEL_BG%/%ACCENT_BG%/gI;/%ACCENT_BG%/e echo yes >&2' "${assets_file}" 2>&1)" && echo "${assets_file}: %SEL_BG% replaced by %ACCENT_BG%" &> "/tmp/$LOG_BASENAME.assets_files.log"
+	test -n "$(sed -i 's/%SEL_BG%/%ACCENT_BG%/gI;/%ACCENT_BG%/e echo yes >&2' "${assets_file}" 2>&1)" && echo "${assets_file}: %SEL_BG% replaced by %ACCENT_BG%" >> "/tmp/$LOG_BASENAME.log"
 done
 
 echo "== Filling the template with the new colorscheme..."
+
+multiple_cmd_colorscheme() {
+	test -n "$(sed -i 's/%ARC_WIDGET_BORDER_COLOR%/#'"$ARC_WIDGET_BORDER_COLOR"'/g;/#'"$ARC_WIDGET_BORDER_COLOR"'/e echo yes >&2' $1 2>&1)" && echo "$1: %ARC_WIDGET_BORDER_COLOR% replaced by #'"$ARC_WIDGET_BORDER_COLOR"'";
+	test -n "$(sed -i 's/%BG%/#'"$BG"'/g;/#'"$BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %BG% replaced by #'"$BG"'";
+	test -n "$(sed -i 's/%BG_DARKER%/#'"$(darker $BG)"'/g;/#'"$(darker $BG)"'/e echo yes >&2' $1 2>&1)" && echo "$1: %BG_DARKER% replaced by #'"$(darker $BG)"'";
+	test -n "$(sed -i 's/%FG%/#'"$FG"'/g;/#'"$FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %FG% replaced by #'"$FG"'";
+	test -n "$(sed -i 's/%ACCENT_BG%/#'"$ACCENT_BG"'/g;/#'"$ACCENT_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %ACCENT_BG% replaced by #'"$ACCENT_BG"'";
+	test -n "$(sed -i 's/%SEL_BG%/#'"$SEL_BG"'/g;/#'"$SEL_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %SEL_BG% replaced by #'"$SEL_BG"'";
+	test -n "$(sed -i 's/%SEL_FG%/#'"$SEL_FG"'/g;/#'"$SEL_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %SEL_FG% replaced by #'"$SEL_FG"'";
+	test -n "$(sed -i 's/%TXT_BG%/#'"$TXT_BG"'/g;/#'"$TXT_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TXT_BG% replaced by #'"$TXT_BG"'";
+	test -n "$(sed -i 's/%TXT_FG%/#'"$TXT_FG"'/g;/#'"$TXT_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TXT_FG% replaced by #'"$TXT_FG"'";
+	test -n "$(sed -i 's/%HDR_BG%/#'"$HDR_BG"'/g;/#'"$HDR_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %HDR_BG% replaced by #'"$HDR_BG"'";
+	test -n "$(sed -i 's/%HDR_BG2%/#'"$(mix $HDR_BG $BG 0.85)"'/g;/#'"$(mix $HDR_BG $BG 0.85)"'/e echo yes >&2' $1 2>&1)" && echo "$1: %HDR_BG2% replaced by #'"$(mix $HDR_BG $BG 0.85)"'";
+	test -n "$(sed -i 's/%HDR_FG%/#'"$HDR_FG"'/g;/#'"$HDR_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %HDR_FG% replaced by #'"$HDR_FG"'";
+	test -n "$(sed -i 's/%BTN_BG%/#'"$BTN_BG"'/g;/#'"$BTN_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %BTN_BG% replaced by #'"$BTN_BG"'";
+	test -n "$(sed -i 's/%BTN_FG%/#'"$BTN_FG"'/g;/#'"$BTN_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %BTN_FG% replaced by #'"$BTN_FG"'";
+	test -n "$(sed -i 's/%HDR_BTN_BG%/#'"$HDR_BTN_BG"'/g;/#'"$HDR_BTN_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %HDR_BTN_BG% replaced by #'"$HDR_BTN_BG"'";
+	test -n "$(sed -i 's/%HDR_BTN_FG%/#'"$HDR_BTN_FG"'/g;/#'"$HDR_BTN_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %HDR_BTN_FG% replaced by #'"$HDR_BTN_FG"'";
+	test -n "$(sed -i 's/%WM_BORDER_FOCUS%/#'"$WM_BORDER_FOCUS"'/g;/#'"$WM_BORDER_FOCUS"'/e echo yes >&2' $1 2>&1)" && echo "$1: %WM_BORDER_FOCUS% replaced by #'"$WM_BORDER_FOCUS"'";
+	test -n "$(sed -i 's/%WM_BORDER_UNFOCUS%/#'"$WM_BORDER_UNFOCUS"'/g;/#'"$WM_BORDER_UNFOCUS"'/e echo yes >&2' $1 2>&1)" && echo "$1: %WM_BORDER_UNFOCUS% replaced by #'"$WM_BORDER_UNFOCUS"'";
+	test -n "$(sed -i 's/%SPACING%/'"$SPACING"'/g;/'"$SPACING"'/e echo yes >&2' $1 2>&1)" && echo "$1: %SPACING% replaced by '"$SPACING"'";
+	test -n "$(sed -i 's/%INACTIVE_FG%/#'"$INACTIVE_FG"'/g;/#'"$INACTIVE_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_FG% replaced by #'"$INACTIVE_FG"'";
+	test -n "$(sed -i 's/%INACTIVE_BG%/#'"$INACTIVE_BG"'/g;/#'"$INACTIVE_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_BG% replaced by #'"$INACTIVE_BG"'";
+	test -n "$(sed -i 's/%INACTIVE_TXT_MIX%/#'"$INACTIVE_TXT_MIX"'/g;/#'"$INACTIVE_TXT_MIX"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_TXT_MIX% replaced by #'"$INACTIVE_TXT_MIX"'";
+	test -n "$(sed -i 's/%INACTIVE_TXT_FG%/#'"$INACTIVE_TXT_FG"'/g;/#'"$INACTIVE_TXT_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_TXT_FG% replaced by #'"$INACTIVE_TXT_FG"'";
+	test -n "$(sed -i 's/%INACTIVE_TXT_BG%/#'"$INACTIVE_TXT_BG"'/g;/#'"$INACTIVE_TXT_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_TXT_BG% replaced by #'"$INACTIVE_TXT_BG"'";
+	test -n "$(sed -i 's/%INACTIVE_HDR_FG%/#'"$INACTIVE_HDR_FG"'/g;/#'"$INACTIVE_HDR_FG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_HDR_FG% replaced by #'"$INACTIVE_HDR_FG"'";
+	test -n "$(sed -i 's/%INACTIVE_HDR_BG%/#'"$INACTIVE_HDR_BG"'/g;/#'"$INACTIVE_HDR_BG"'/e echo yes >&2' $1 2>&1)" && echo "$1: %INACTIVE_HDR_BG% replaced by #'"$INACTIVE_HDR_BG"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR1%/#'"$TERMINAL_COLOR1"'/g;/#'"$TERMINAL_COLOR1"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR1% replaced by #'"$TERMINAL_COLOR1"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR3%/#'"$TERMINAL_COLOR3"'/g;/#'"$TERMINAL_COLOR3"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR3% replaced by #'"$TERMINAL_COLOR3"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR4%/#'"$TERMINAL_COLOR4"'/g;/#'"$TERMINAL_COLOR4"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR4% replaced by #'"$TERMINAL_COLOR4"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR5%/#'"$TERMINAL_COLOR5"'/g;/#'"$TERMINAL_COLOR5"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR5% replaced by #'"$TERMINAL_COLOR5"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR9%/#'"$TERMINAL_COLOR9"'/g;/#'"$TERMINAL_COLOR9"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR9% replaced by #'"$TERMINAL_COLOR9"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR9_DARKER%/#'"$(darker "$TERMINAL_COLOR9" 10)"'/g;/#'"$(darker "$TERMINAL_COLOR9" 10)"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR9_DARKER% replaced by #'"$(darker "$TERMINAL_COLOR9" 10)"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR9_LIGHTER%/#'"$(darker "$TERMINAL_COLOR9" -10)"'/g;/#'"$(darker "$TERMINAL_COLOR9" -10)"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR9_LIGHTER% replaced by #'"$(darker "$TERMINAL_COLOR9" -10)"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR10%/#'"$TERMINAL_COLOR10"'/g;/#'"$TERMINAL_COLOR10"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR10% replaced by #'"$TERMINAL_COLOR10"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR11%/#'"$TERMINAL_COLOR11"'/g;/#'"$TERMINAL_COLOR11"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR11% replaced by #'"$TERMINAL_COLOR11"'";
+	test -n "$(sed -i 's/%TERMINAL_COLOR12%/#'"$TERMINAL_COLOR12"'/g;/#'"$TERMINAL_COLOR12"'/e echo yes >&2' $1 2>&1)" && echo "$1: %TERMINAL_COLOR12% replaced by #'"$TERMINAL_COLOR12"'";
+	test -n "$(sed -i 's/%OUTPUT_THEME_NAME%/'"$OUTPUT_THEME_NAME"'/g;/'"$OUTPUT_THEME_NAME"'/e echo yes >&2' $1 2>&1)" && echo "$1: %OUTPUT_THEME_NAME% replaced by '"$OUTPUT_THEME_NAME"'";
+};
 for FILEPATH in "${PATHLIST[@]}"; do
-	find "$FILEPATH" -type f -exec sed -i'' \
-		-e 's/%ARC_WIDGET_BORDER_COLOR%/#'"$ARC_WIDGET_BORDER_COLOR"'/g' \
-		-e 's/%BG%/#'"$BG"'/g' \
-		-e 's/%BG_DARKER%/#'"$(darker $BG)"'/g' \
-		-e 's/%FG%/#'"$FG"'/g' \
-		-e 's/%ACCENT_BG%/#'"$ACCENT_BG"'/g' \
-		-e 's/%SEL_BG%/#'"$SEL_BG"'/g' \
-		-e 's/%SEL_FG%/#'"$SEL_FG"'/g' \
-		-e 's/%TXT_BG%/#'"$TXT_BG"'/g' \
-		-e 's/%TXT_FG%/#'"$TXT_FG"'/g' \
-		-e 's/%HDR_BG%/#'"$HDR_BG"'/g' \
-		-e 's/%HDR_BG2%/#'"$(mix $HDR_BG $BG 0.85)"'/g' \
-		-e 's/%HDR_FG%/#'"$HDR_FG"'/g' \
-		-e 's/%BTN_BG%/#'"$BTN_BG"'/g' \
-		-e 's/%BTN_FG%/#'"$BTN_FG"'/g' \
-		-e 's/%HDR_BTN_BG%/#'"$HDR_BTN_BG"'/g' \
-		-e 's/%HDR_BTN_FG%/#'"$HDR_BTN_FG"'/g' \
-		-e 's/%WM_BORDER_FOCUS%/#'"$WM_BORDER_FOCUS"'/g' \
-		-e 's/%WM_BORDER_UNFOCUS%/#'"$WM_BORDER_UNFOCUS"'/g' \
-		-e 's/%SPACING%/'"$SPACING"'/g' \
-		-e 's/%INACTIVE_FG%/#'"$INACTIVE_FG"'/g' \
-		-e 's/%INACTIVE_BG%/#'"$INACTIVE_BG"'/g' \
-		-e 's/%INACTIVE_TXT_MIX%/#'"$INACTIVE_TXT_MIX"'/g' \
-		-e 's/%INACTIVE_TXT_FG%/#'"$INACTIVE_TXT_FG"'/g' \
-		-e 's/%INACTIVE_TXT_BG%/#'"$INACTIVE_TXT_BG"'/g' \
-		-e 's/%INACTIVE_HDR_FG%/#'"$INACTIVE_HDR_FG"'/g' \
-		-e 's/%INACTIVE_HDR_BG%/#'"$INACTIVE_HDR_BG"'/g' \
-		-e 's/%TERMINAL_COLOR1%/#'"$TERMINAL_COLOR1"'/g' \
-		-e 's/%TERMINAL_COLOR3%/#'"$TERMINAL_COLOR3"'/g' \
-		-e 's/%TERMINAL_COLOR4%/#'"$TERMINAL_COLOR4"'/g' \
-		-e 's/%TERMINAL_COLOR5%/#'"$TERMINAL_COLOR5"'/g' \
-		-e 's/%TERMINAL_COLOR9%/#'"$TERMINAL_COLOR9"'/g' \
-		-e 's/%TERMINAL_COLOR9_DARKER%/#'"$(darker "$TERMINAL_COLOR9" 10)"'/g' \
-		-e 's/%TERMINAL_COLOR9_LIGHTER%/#'"$(darker "$TERMINAL_COLOR9" -10)"'/g' \
-		-e 's/%TERMINAL_COLOR10%/#'"$TERMINAL_COLOR10"'/g' \
-		-e 's/%TERMINAL_COLOR11%/#'"$TERMINAL_COLOR11"'/g' \
-		-e 's/%TERMINAL_COLOR12%/#'"$TERMINAL_COLOR12"'/g' \
-		-e 's/%OUTPUT_THEME_NAME%/'"$OUTPUT_THEME_NAME"'/g' \
-		{} \; ;
+	find "$FILEPATH" -type f -exec bash -c 'multiple_cmd_colorscheme "$0"' {} \; >> "/tmp/$LOG_BASENAME.log"
 done
 
 if [[ "$ARC_TRANSPARENCY" == "false" ]]; then
@@ -284,8 +329,8 @@ echo "== Making theme..."
 mkdir distrib
 PREF_DIR="$(readlink -e ./distrib/)"
 echo "== Final command is: meson setup --prefix=\"$PREF_DIR\" -Dthemes=gtk2,gtk3,gtk4 -Dvariants=light,darker,dark,lighter \"${MESON_OPTS}\" build/"
-meson setup --prefix="$PREF_DIR" -Dthemes=gtk2,gtk3,gtk4 -Dvariants=light,darker,dark,lighter "${MESON_OPTS}" build/ &> "/tmp/$LOG_BASENAME.meson_setup.log"
-meson install -C build/ &> "/tmp/$LOG_BASENAME.meson_install.log"
+meson setup --prefix="$PREF_DIR" -Dthemes=gtk2,gtk3,gtk4 -Dvariants=light,darker,dark,lighter "${MESON_OPTS}" build/ >> "/tmp/$LOG_BASENAME.log"
+meson install -C build/ >> "/tmp/$LOG_BASENAME.log"
 echo
 
 echo
@@ -298,13 +343,14 @@ fi
 
 cd "${DEST_PATH}"
 sed -i "s/=Arc.*\$/=$OUTPUT_THEME_NAME/g" ./index.theme
-cp -fv ./gtk-2.0/assets/focus-line.png ./gtk-2.0/assets/frame.png
-cp -fv ./gtk-2.0/assets/null.png ./gtk-2.0/assets/frame-gap-start.png
-cp -fv ./gtk-2.0/assets/null.png ./gtk-2.0/assets/frame-gap-end.png
-cp -fv ./gtk-2.0/assets/null.png ./gtk-2.0/assets/line-v.png
-cp -fv ./gtk-2.0/assets/null.png ./gtk-2.0/assets/line-h.png
+cp -f ./gtk-2.0/assets/focus-line.png ./gtk-2.0/assets/frame.png
+cp -f ./gtk-2.0/assets/null.png ./gtk-2.0/assets/frame-gap-start.png
+cp -f ./gtk-2.0/assets/null.png ./gtk-2.0/assets/frame-gap-end.png
+cp -f ./gtk-2.0/assets/null.png ./gtk-2.0/assets/line-v.png
+cp -f ./gtk-2.0/assets/null.png ./gtk-2.0/assets/line-h.png
 
 echo "== Finished Successfully: meson setup --prefix=\"$PREF_DIR\" -Dthemes=gtk2,gtk3,gtk4 -Dvariants=light,darker,dark,lighter \"${MESON_OPTS}\" build/"
-echo "== The theme was installed to ${DEST_PATH}"
+echo "== The theme was installed into ${DEST_PATH} folder."
+echo "!== DETAILED LOG AT: "/tmp/$LOG_BASENAME.log" ==!"
 echo
 exit 0

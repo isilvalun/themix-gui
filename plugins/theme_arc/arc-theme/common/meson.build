@@ -15,15 +15,9 @@ foreach variant : get_option('variants')
 endforeach
 
 common_dirs = {
-  'cinnamon' : 'cinnamon',
-  'gnome-shell' : 'gnome-shell',
   'gtk2' : 'gtk-2.0',
   'gtk3' : 'gtk-3.0',
-  'gtk4' : 'gtk-4.0',
-  'metacity' : 'metacity-1',
-  'plank' : 'plank',
-  'unity' : 'unity',
-  'xfwm' : 'xfwm4'
+  'gtk4' : 'gtk-4.0'
 }
 
 foreach theme : get_option('themes')
