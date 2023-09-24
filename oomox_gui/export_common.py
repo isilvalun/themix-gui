@@ -46,6 +46,7 @@ class ExportDialog(Gtk.Dialog):
     scrolled_window: Gtk.ScrolledWindow
     log: Gtk.TextView
     error_box: Gtk.Box
+    finished_box: Gtk.Box
     apply_button: Gtk.Button
 
     def _close_button_callback(self, _widget: Gtk.Button) -> None:
@@ -72,6 +73,23 @@ class ExportDialog(Gtk.Dialog):
         self.error_box.show_all()
         self.box.add(self.error_box)
 
+    def show_finished(self) -> None:
+        self.box.remove(self.label)
+        self.box.remove(self.spinner)
+
+        finished_label = CenterLabel(
+            label=translate("Finished!"),
+        )
+        finished_label.set_alignment(0.5, 0.5)
+
+        finished_dismiss_button = Gtk.Button(label=translate("_Dismiss"), use_underline=True)
+        finished_dismiss_button.connect("clicked", self._close_button_callback)
+
+        self.finished_box.add(finished_label)
+        self.finished_box.add(finished_dismiss_button)
+        self.finished_box.show_all()
+        self.box.add(self.finished_box)
+
     def set_text(self, text: str) -> None:
         self.log.get_buffer().set_text(text)
 
@@ -85,7 +103,7 @@ class ExportDialog(Gtk.Dialog):
             height: int = 80,
     ) -> None:
         headline = headline or translate("Export Theme")
-        self.theme_name = "oomox-" + theme_name.split("/")[-1]
+        self.theme_name = theme_name.split("/")[-1]
 
         # @TODO: make sure it doesn't break things:
         self.colorscheme = colorscheme
@@ -133,6 +151,11 @@ class ExportDialog(Gtk.Dialog):
         )
         self.error_box.set_margin_bottom(10)
 
+        self.finished_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=5,
+        )
+        self.finished_box.set_margin_bottom(10)
+
         self.box = self.get_content_area()
         self.box.set_margin_left(5)
         self.box.set_margin_right(5)
@@ -158,7 +181,7 @@ class ExportDialog(Gtk.Dialog):
             self.set_text(text)
 
         def ui_done() -> None:
-            self.destroy()
+            self.show_finished()
 
         def ui_error() -> None:
             self.show_error()

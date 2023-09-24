@@ -7,7 +7,6 @@ from oomox_gui.color import mix_theme_colors
 from oomox_gui.export_common import ExportDialogWithOptions
 from oomox_gui.i18n import translate
 
-# from oomox_gui.export_common import OPTION_GTK2_HIDPI
 from oomox_gui.plugin_api import OomoxThemePlugin
 
 if TYPE_CHECKING:
@@ -16,14 +15,8 @@ if TYPE_CHECKING:
     from oomox_gui.preview import ThemePreview
     from oomox_gui.theme_file import ThemeT
 
-
 PLUGIN_DIR: "Final" = os.path.dirname(os.path.realpath(__file__))
 THEME_DIR: "Final" = os.path.join(PLUGIN_DIR, "arc-theme/")
-
-OPTION_EXPORT_CINNAMON_THEME: "Final" = "OPTION_EXPORT_CINNAMON_THEME"
-OPTION_EXPORT_GNOME_SHELL_THEME: "Final" = "OPTION_EXPORT_GNOME_SHELL_THEME"
-OPTION_EXPORT_XFWM_THEME: "Final" = "OPTION_EXPORT_XFWM_THEME"
-
 
 class ArcThemeExportDialog(ExportDialogWithOptions):
 
@@ -34,20 +27,13 @@ class ArcThemeExportDialog(ExportDialogWithOptions):
         self.command = [
             "bash",
             os.path.join(THEME_DIR, "change_color.sh"),
-            # "--hidpi", str(self.export_config[OPTION_GTK2_HIDPI]),
             "--output", self.theme_name,
             self.temp_theme_path,
         ]
-        autogen_opts = []
-        if not self.export_config[OPTION_EXPORT_CINNAMON_THEME]:
-            autogen_opts += ["--disable-cinnamon"]
-        if not self.export_config[OPTION_EXPORT_GNOME_SHELL_THEME]:
-            autogen_opts += ["--disable-gnome-shell"]
-        if not self.export_config[OPTION_EXPORT_XFWM_THEME]:
-            autogen_opts += ["--disable-xfwm"]
-        if autogen_opts:
+        meson_opts = []
+        if meson_opts:
             self.command += [
-                "--autogen-opts", " ".join(autogen_opts),
+                "--meson-opts", " ".join(meson_opts),
             ]
         super().do_export()
 
@@ -62,23 +48,8 @@ class ArcThemeExportDialog(ExportDialogWithOptions):
             transient_for=transient_for,
             colorscheme=colorscheme,
             theme_name=theme_name,
-            override_options={
-                OPTION_EXPORT_CINNAMON_THEME: {
-                    "default": False,
-                    "display_name": translate("Generate theme for _Cinnamon"),
-                },
-                OPTION_EXPORT_GNOME_SHELL_THEME: {
-                    "default": False,
-                    "display_name": translate("Generate theme for GNOME _Shell"),
-                },
-                OPTION_EXPORT_XFWM_THEME: {
-                    "default": False,
-                    "display_name": translate("Generate theme for _Xfwm"),
-                },
-            },
             **kwargs,
         )
-
 
 def _monkeypatch_update_preview_borders(preview_object: "ThemePreview") -> None:
     _monkeypatch_id = "_arc_borders_monkeypatched"
@@ -133,19 +104,17 @@ def _monkeypatch_update_preview_borders(preview_object: "ThemePreview") -> None:
     preview_object.update_preview_borders = _update_preview_borders
     setattr(preview_object, _monkeypatch_id, True)
 
-
 class Plugin(OomoxThemePlugin):
 
     name = "arc"
     display_name = "Arc"
     description = (
-        "GTK+2, GTK+3\n"
-        "Cinnamon, GNOME Shell, Metacity, Openbox, Unity, Xfwm"
+        "GTK+2, GTK+3, GTK+4"
     )
     about_links = [
         {
             "name": translate("Homepage"),
-            "url": "https://github.com/arc-design/arc-theme",
+            "url": "https://github.com/jnsh/arc-theme",
         },
     ]
 
@@ -167,9 +136,6 @@ class Plugin(OomoxThemePlugin):
         "HDR_BTN_BG",
         "ACCENT_BG",
     ]
-    # enabled_keys_options = [
-    #     'ROUNDNESS',
-    # ]
 
     theme_model_gtk = [
         {
@@ -180,7 +146,7 @@ class Plugin(OomoxThemePlugin):
             ),
             "type": "color",
             "display_name": translate("Border"),
-            "description": translate("not supported by GTK+2 theme"),
+            "description": translate("-not supported by GTK+2 theme-"),
         },
     ]
 
@@ -190,14 +156,8 @@ class Plugin(OomoxThemePlugin):
             "type": "bool",
             "fallback_value": True,
             "display_name": translate("Enable Theme Transparency"),
-            "description": translate("not supported by GTK+2 theme"),
+            "description": translate("-not supported by GTK+2 theme-"),
         },
-        # {
-        #     'key': 'GTK3_GENERATE_DARK',
-        #     'type': 'bool',
-        #     'fallback_value': True,
-        #     'display_name': translate('(GTK3) Add Dark Variant'),
-        # },
     ]
 
     def preview_before_load_callback(
